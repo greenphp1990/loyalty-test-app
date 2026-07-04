@@ -1,0 +1,469 @@
+datasource db {
+  provider = "postgresql"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// ==========================================
+// Enums
+// ==========================================
+
+enum UserRole {
+  SENDER
+  SUPER_ADMIN
+  FINANCE_ADMIN
+  SUPPORT_ADMIN
+  CONTENT_ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  BANNED
+}
+
+enum GiftType {
+  AIRTIME
+  DATA
+  CASH
+}
+
+enum GiftStatus {
+  PENDING
+  ESCROW
+  RELEASED
+  REFUNDED
+  FROZEN
+}
+
+enum PaymentType {
+  TEST_FUNDING
+  WALLET_FUNDING
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCESSFUL
+  FAILED
+  REVERSED
+}
+
+enum TestStatus {
+  ACTIVE
+  COMPLETED
+  EXPIRED
+  DECLINED
+  REPORTED
+}
+
+enum ResultStatus {
+  PASSED
+  PARTIAL_PASS
+  FAILED
+}
+
+enum TransactionType {
+  DEPOSIT
+  WITHDRAWAL
+  REFUND
+  CHARGE
+}
+
+enum TransactionStatus {
+  PENDING
+  SUCCESSFUL
+  FAILED
+}
+
+enum RewardStatus {
+  PENDING
+  PROCESSING
+  SUCCESSFUL
+  FAILED
+  RETRYING
+}
+
+enum ReferralStatus {
+  PENDING
+  PAID
+  CANCELLED
+}
+
+enum ReportStatus {
+  PENDING
+  RESOLVED
+  DISMISSED
+}
+
+enum TemplateStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum KeywordSeverity {
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum KeywordStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum ContentStatus {
+  DRAFT
+  PUBLISHED
+}
+
+// ==========================================
+// Models
+// ==========================================
+
+model User {
+  id            String     @id @default(uuid())
+  fullName      String     @map("full_name")
+  email         String     @unique
+  phoneNumber   String     @unique @map("phone_number")
+  passwordHash  String     @map("password_hash")
+  role          UserRole   @default(SENDER)
+  status        UserStatus @default(ACTIVE)
+  referralCode  String     @unique @map("referral_code")
+  referredBy    String?    @map("referred_by")
+  emailVerified DateTime?  @map("email_verified")
+  phoneVerified DateTime?  @map("phone_verified")
+  createdAt     DateTime   @default(now()) @map("created_at")
+  updatedAt     DateTime   @updatedAt @map("updated_at")
+
+  tests         LoyaltyTest[]       @relation("SenderTests")
+  wallet        Wallet?
+  transactions  WalletTransaction[]
+  rewards       Reward[]            @relation("SenderRewards")
+  referralsSent Referral[]          @relation("Referrer")
+  referralRec   Referral?           @relation("ReferredUser")
+  auditLogs     AdminAuditLog[]
+  blockedAttempts BlockedQuestionAttempt[]
+
+  @@index([phoneNumber])
+  @@index([role])
+  @@index([status])
+  @@map("users")
+}
+
+model LoyaltyTest {
+  id                         String       @id @default(uuid())
+  senderId                   String       @map("sender_id")
+  receiverName               String       @map("receiver_name")
+  receiverPhone              String       @map("receiver_phone")
+  optionalMessage            String?      @map("optional_message")
+  questionType               String       @map("question_type") // TEMPLATE, CUSTOM
+  questionText               String       @map("question_text")
+  expectedAnswerEncrypted    String       @map("expected_answer_encrypted")
+  expectedAnswerNormalized   String       @map("expected_answer_normalized")
+  testToken                  String       @unique @map("test_token")
+  giftType                   GiftType     @map("gift_type")
+  giftAmount                 Float        @map("gift_amount")
+  giftStatus                 GiftStatus   @default(PENDING) @map("gift_status")
+  serviceFee                 Float        @map("service_fee")
+  totalAmount                Float        @map("total_amount")
+  paymentStatus              PaymentStatus @default(PENDING) @map("payment_status")
+  testStatus                 TestStatus   @default(ACTIVE) @map("test_status")
+  matchScore                 Float?       @map("match_score")
+  resultStatus               ResultStatus? @map("result_status")
+  expiresAt                  DateTime     @map("expires_at")
+  submittedAt                DateTime?    @map("submitted_at")
+  reminderSentAt             DateTime?    @map("reminder_sent_at")
+  createdAt                  DateTime     @default(now()) @map("created_at")
+  updatedAt                  DateTime     @updatedAt @map("updated_at")
+
+  sender       User          @relation("SenderTests", fields: [senderId], references: [id])
+  responses    TestResponse[]
+  payments     Payment[]
+  rewards      Reward[]
+  abuseReports AbuseReport[]
+
+  @@index([senderId])
+  @@index([receiverPhone])
+  @@index([testToken])
+  @@index([testStatus])
+  @@index([paymentStatus])
+  @@map("loyalty_tests")
+}
+
+model TestResponse {
+  id                       String       @id @default(uuid())
+  testId                   String       @map("test_id")
+  receiverAnswer           String       @map("receiver_answer")
+  receiverAnswerNormalized String       @map("receiver_answer_normalized")
+  matchScore               Float        @map("match_score")
+  resultStatus             ResultStatus @map("result_status")
+  ipAddress                String?      @map("ip_address")
+  userAgent                String?      @map("user_agent")
+  submittedAt              DateTime     @default(now()) @map("submitted_at")
+  createdAt                DateTime     @default(now()) @map("created_at")
+
+  test LoyaltyTest @relation(fields: [testId], references: [id], onDelete: Cascade)
+
+  @@index([testId])
+  @@index([resultStatus])
+  @@map("test_responses")
+}
+
+model Payment {
+  id               String        @id @default(uuid())
+  userId           String        @map("user_id")
+  testId           String?       @map("test_id")
+  paymentType      PaymentType   @map("payment_type")
+  gateway          String        // PAYSTACK, FLUTTERWAVE, WALLET
+  gatewayReference String        @unique @map("gateway_reference")
+  amount           Float
+  currency         String        @default("NGN")
+  status           PaymentStatus @default(PENDING)
+  metadata         Json?
+  paidAt           DateTime?     @map("paid_at")
+  createdAt        DateTime      @default(now()) @map("created_at")
+  updatedAt        DateTime      @updatedAt @map("updated_at")
+
+  test      LoyaltyTest? @relation(fields: [testId], references: [id])
+  referrals Referral[]   @relation("QualifyingPayment")
+
+  @@index([userId])
+  @@index([testId])
+  @@index([status])
+  @@map("payments")
+}
+
+model Wallet {
+  id        String   @id @default(uuid())
+  userId    String   @unique @map("user_id")
+  balance   Float    @default(0.0)
+  currency  String   @default("NGN")
+  status    UserStatus @default(ACTIVE) // Wallet status reused ACTIVE/FROZEN from UserStatus
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user         User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions WalletTransaction[]
+
+  @@index([userId])
+  @@map("wallets")
+}
+
+model WalletTransaction {
+  id              String            @id @default(uuid())
+  walletId        String            @map("wallet_id")
+  userId          String            @map("user_id")
+  transactionType TransactionType   @map("transaction_type")
+  amount          Float
+  balanceBefore   Float             @map("balance_before")
+  balanceAfter    Float             @map("balance_after")
+  reference       String            @unique
+  description     String?
+  status          TransactionStatus @default(SUCCESSFUL)
+  createdAt       DateTime          @default(now()) @map("created_at")
+
+  wallet Wallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([walletId])
+  @@index([userId])
+  @@index([transactionType])
+  @@index([status])
+  @@map("wallet_transactions")
+}
+
+model Reward {
+  id                String       @id @default(uuid())
+  testId            String       @map("test_id")
+  senderId          String       @map("sender_id")
+  receiverPhone     String       @map("receiver_phone")
+  rewardType        GiftType     @map("reward_type")
+  network           String       // MTN, AIRTEL, GLO, 9MOBILE
+  amount            Float
+  provider          String       // DING, RELOADLY, VTUPASS, MOCK
+  providerReference String?      @map("provider_reference")
+  status            RewardStatus @default(PENDING)
+  deliveredAt       DateTime?    @map("delivered_at")
+  createdAt         DateTime     @default(now()) @map("created_at")
+  updatedAt         DateTime     @updatedAt @map("updated_at")
+
+  test   LoyaltyTest @relation(fields: [testId], references: [id], onDelete: Cascade)
+  sender User        @relation("SenderRewards", fields: [senderId], references: [id])
+
+  @@index([testId])
+  @@index([senderId])
+  @@index([receiverPhone])
+  @@index([status])
+  @@map("rewards")
+}
+
+model Referral {
+  id                  String         @id @default(uuid())
+  referrerId          String         @map("referrer_id")
+  referredUserId      String         @unique @map("referred_user_id")
+  commissionAmount    Float          @default(0.0) @map("commission_amount")
+  status              ReferralStatus @default(PENDING)
+  qualifyingPaymentId String?        @map("qualifying_payment_id")
+  createdAt           DateTime       @default(now()) @map("created_at")
+  updatedAt           DateTime       @updatedAt @map("updated_at")
+
+  referrer          User     @relation("Referrer", fields: [referrerId], references: [id])
+  referredUser      User     @relation("ReferredUser", fields: [referredUserId], references: [id])
+  qualifyingPayment Payment? @relation("QualifyingPayment", fields: [qualifyingPaymentId], references: [id])
+
+  @@index([referrerId])
+  @@index([referredUserId])
+  @@index([status])
+  @@map("referrals")
+}
+
+model AbuseReport {
+  id            String       @id @default(uuid())
+  testId        String       @map("test_id")
+  receiverPhone String       @map("receiver_phone")
+  reason        String
+  comment       String?
+  status        ReportStatus @default(PENDING)
+  reviewedBy    String?      @map("reviewed_by")
+  createdAt     DateTime     @default(now()) @map("created_at")
+  updatedAt     DateTime     @updatedAt @map("updated_at")
+
+  test LoyaltyTest @relation(fields: [testId], references: [id], onDelete: Cascade)
+
+  @@index([testId])
+  @@index([receiverPhone])
+  @@index([status])
+  @@map("abuse_reports")
+}
+
+model BlockedNumber {
+  id          String   @id @default(uuid())
+  phoneNumber String   @unique @map("phone_number")
+  reason      String?
+  blockedBy   String?  @map("blocked_by") // ADMIN_ID, RECEIVER
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([phoneNumber])
+  @@map("blocked_numbers")
+}
+
+model QuestionTemplate {
+  id           String         @id @default(uuid())
+  category     String         // PARTNER_IDENTITY, RELATIONSHIP_MEMORY, LIGHT_PERSONAL
+  questionText String         @map("question_text")
+  answerType   String         @map("answer_type") // TEXT, NUMBER, DATE
+  status       TemplateStatus @default(ACTIVE)
+  createdAt    DateTime       @default(now()) @map("created_at")
+  updatedAt    DateTime       @updatedAt @map("updated_at")
+
+  @@index([category])
+  @@index([status])
+  @@map("question_templates")
+}
+
+model BlockedKeyword {
+  id        String          @id @default(uuid())
+  keyword   String          @unique
+  severity  KeywordSeverity @default(HIGH)
+  status    KeywordStatus   @default(ACTIVE)
+  createdAt DateTime        @default(now()) @map("created_at")
+  updatedAt DateTime        @updatedAt @map("updated_at")
+
+  @@index([keyword])
+  @@index([status])
+  @@map("blocked_keywords")
+}
+
+model PlatformSetting {
+  id          String   @id @default(uuid())
+  key         String   @unique
+  value       String
+  description String?
+  updatedBy   String?  @map("updated_by")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@index([key])
+  @@map("platform_settings")
+}
+
+model FeatureFlag {
+  id          String   @id @default(uuid())
+  featureName String   @unique @map("feature_name")
+  enabled     Boolean  @default(false)
+  updatedBy   String?  @map("updated_by")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@index([featureName])
+  @@map("feature_flags")
+}
+
+model AdminAuditLog {
+  id         String   @id @default(uuid())
+  adminId    String   @map("admin_id")
+  action     String
+  entityType String   @map("entity_type")
+  entityId   String?  @map("entity_id")
+  metadata   Json?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  admin User @relation(fields: [adminId], references: [id])
+
+  @@index([adminId])
+  @@index([action])
+  @@map("admin_audit_logs")
+}
+
+model ContentPage {
+  id        String        @id @default(uuid())
+  slug      String        @unique
+  title     String
+  content   String
+  status    ContentStatus @default(DRAFT)
+  createdAt DateTime      @default(now()) @map("created_at")
+  updatedAt DateTime      @updatedAt @map("updated_at")
+
+  @@index([slug])
+  @@index([status])
+  @@map("content_pages")
+}
+
+model BlockedQuestionAttempt {
+  id             String   @id @default(uuid())
+  userId         String   @map("user_id")
+  questionText   String   @map("question_text")
+  reason         String
+  classification String
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("blocked_question_attempts")
+}
+
+model MessageLog {
+  id                String   @id @default(uuid())
+  testId            String?  @map("test_id")
+  userId            String?  @map("user_id")
+  channel           String
+  provider          String
+  recipientPhone    String   @map("recipient_phone")
+  status            String
+  providerStatus    String?  @map("provider_status")
+  providerMessageId String?  @map("provider_message_id")
+  errorCode         String?  @map("error_code")
+  errorMessage      String?  @map("error_message")
+  requestPayload    Json?    @map("request_payload")
+  responsePayload   Json?    @map("response_payload")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  @@index([testId])
+  @@index([userId])
+  @@index([channel])
+  @@index([provider])
+  @@index([status])
+  @@map("message_logs")
+}
+
