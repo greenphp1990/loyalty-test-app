@@ -97,6 +97,8 @@ async function main() {
     { key: "withdrawal_fee", value: "100", desc: "Flat withdrawal processing fee" },
     { key: "referral_commission", value: "50", desc: "Payout in NGN to referrer per paid test created" },
     { key: "refund_rules", value: "wallet_refund", desc: "Default failure policy: wallet_refund or payment_method" },
+    { key: "WELCOME_WALLET_BONUS_AMOUNT", value: "50000", desc: "Welcome bonus amount in NGN credited to new registrations" },
+    { key: "WELCOME_WALLET_BONUS_ENABLED", value: "true", desc: "Enable or disable welcome wallet bonus credit" },
   ];
 
   console.log("⚙️ Seeding pricing & system settings...");

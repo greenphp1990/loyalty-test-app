@@ -54,7 +54,7 @@ export async function POST(request: Request) {
     const suffix = Math.random().toString(36).substring(2, 6).toUpperCase();
     const newReferralCode = `${prefix}-${suffix}`;
 
-    // 5. Database transaction: Create User & linked Wallet
+    // 5. Database transaction: Create User & linked Wallet with welcome credit if enabled
     const result = await prisma.$transaction(async (tx) => {
       // Create user
       const user = await tx.user.create({
@@ -70,15 +70,54 @@ export async function POST(request: Request) {
         },
       });
 
-      // Automatically create the wallet
-      const wallet = await tx.wallet.create({
-        data: {
-          userId: user.id,
-          balance: 0.0,
-          currency: "NGN",
-          status: UserStatus.ACTIVE,
-        },
+      // Fetch platform settings for welcome bonus
+      const bonusAmountSetting = await tx.platformSetting.findUnique({
+        where: { key: "WELCOME_WALLET_BONUS_AMOUNT" },
       });
+      const bonusEnabledSetting = await tx.platformSetting.findUnique({
+        where: { key: "WELCOME_WALLET_BONUS_ENABLED" },
+      });
+
+      const bonusAmount = bonusAmountSetting ? Number(bonusAmountSetting.value) : 50000;
+      const bonusEnabled = bonusEnabledSetting ? bonusEnabledSetting.value === "true" : true;
+
+      let wallet;
+      if (bonusEnabled && bonusAmount > 0) {
+        // Create wallet with welcome balance
+        wallet = await tx.wallet.create({
+          data: {
+            userId: user.id,
+            balance: bonusAmount,
+            currency: "NGN",
+            status: UserStatus.ACTIVE,
+          },
+        });
+
+        // Create transaction log
+        await tx.walletTransaction.create({
+          data: {
+            walletId: wallet.id,
+            userId: user.id,
+            transactionType: "DEPOSIT",
+            amount: bonusAmount,
+            balanceBefore: 0.0,
+            balanceAfter: bonusAmount,
+            reference: `WELCOME_50000_BONUS_${user.id}`,
+            description: "₦50,000 welcome test credit",
+            status: "SUCCESSFUL",
+          },
+        });
+      } else {
+        // Create standard wallet with 0 balance
+        wallet = await tx.wallet.create({
+          data: {
+            userId: user.id,
+            balance: 0.0,
+            currency: "NGN",
+            status: UserStatus.ACTIVE,
+          },
+        });
+      }
 
       return { user, wallet };
     });
