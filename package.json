@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "postinstall": "prisma generate",
-    "credit:wallets": "ts-node --compiler-options \"{\\\"module\\\":\\\"CommonJS\\\"}\" prisma/credit-existing-users-50k.ts"
+    "credit:wallets": "ts-node --compiler-options \"{\\\"module\\\":\\\"CommonJS\\\"}\" prisma/credit-existing-users-50k.ts",
+    "admin:create": "ts-node --compiler-options \"{\\\"module\\\":\\\"CommonJS\\\"}\" prisma/create-super-admin-ngojobsite.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.8.0",
