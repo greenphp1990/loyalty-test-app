@@ -43,6 +43,26 @@ export default function LoyaltyTestsPage() {
   const [funding, setFunding] = useState(false);
   const [fundingError, setFundingError] = useState<string | null>(null);
 
+  // Fetch settings map
+  const [senderSettings, setSenderSettings] = useState<any | null>(null);
+
+  const isWhatsAppConfigured = senderSettings?.messagingConfig?.whatsappConfigured ?? true;
+  const isWhatsAppSendingEnabled = senderSettings?.featureFlags?.whatsappSending ?? true;
+  const isWhatsAppSelectable = isWhatsAppConfigured && isWhatsAppSendingEnabled;
+
+  const isSmsConfigured = senderSettings?.messagingConfig?.smsConfigured ?? true;
+  const isSmsSendingEnabled = senderSettings?.featureFlags?.smsSending ?? false;
+  const isSmsSelectable = isSmsConfigured && isSmsSendingEnabled;
+
+  const openReminderModal = (test: LoyaltyTest) => {
+    setReminderModalTest(test);
+    if (isWhatsAppSelectable) {
+      setReminderMethod("WHATSAPP");
+    } else {
+      setReminderMethod("SMS");
+    }
+  };
+
   const closeReminderModal = () => {
     if (sendingReminder) return;
     setReminderModalTest(null);
@@ -60,13 +80,8 @@ export default function LoyaltyTestsPage() {
 
     try {
       const isWhatsApp = reminderMethod === "WHATSAPP";
-      const endpoint = isWhatsApp
-        ? `/api/v1/sender/tests/${reminderModalTest.id}/send-message`
-        : `/api/v1/sender/tests/${reminderModalTest.id}/remind`;
-
-      const payload = isWhatsApp
-        ? { channel: "WHATSAPP" }
-        : { method: "SMS" };
+      const endpoint = `/api/v1/sender/tests/${reminderModalTest.id}/send-message`;
+      const payload = { channel: reminderMethod };
 
       const res = await fetch(endpoint, {
         method: "POST",
@@ -78,10 +93,8 @@ export default function LoyaltyTestsPage() {
       if (!res.ok) {
         if (isWhatsApp) {
           setReminderDebug(data.debug || null);
-          throw new Error(data.message || "WhatsApp could not be sent. Please check the provider setup.");
-        } else {
-          throw new Error(data.error || "Failed to send reminder.");
         }
+        throw new Error(data.error || data.message || "Failed to send message reminder.");
       }
 
       // Update tests state
@@ -161,22 +174,33 @@ export default function LoyaltyTestsPage() {
     }
   };
 
+
+
   useEffect(() => {
-    const fetchTests = async () => {
+    const fetchTestsAndSettings = async () => {
       try {
         setLoading(true);
-        const res = await fetch("/api/v1/sender/tests");
-        if (!res.ok) throw new Error("Failed to fetch loyalty tests.");
-        const data = await res.json();
-        setTests(data.tests || []);
+        const [testsRes, settingsRes] = await Promise.all([
+          fetch("/api/v1/sender/tests"),
+          fetch("/api/v1/sender/settings")
+        ]);
+
+        if (!testsRes.ok) throw new Error("Failed to fetch loyalty tests.");
+        const testsData = await testsRes.json();
+        setTests(testsData.tests || []);
+
+        if (settingsRes.ok) {
+          const settingsData = await settingsRes.json();
+          setSenderSettings(settingsData);
+        }
       } catch (err: any) {
-        console.error("Fetch tests error:", err);
+        console.error("Fetch tests and settings error:", err);
         setError(err.message || "An unexpected error occurred.");
       } finally {
         setLoading(false);
       }
     };
-    fetchTests();
+    fetchTestsAndSettings();
   }, []);
 
   const formatCurrency = (amount: number) => {
@@ -428,7 +452,7 @@ export default function LoyaltyTestsPage() {
                                   </div>
                                 ) : (
                                   <button
-                                    onClick={() => setReminderModalTest(test)}
+                                    onClick={() => openReminderModal(test)}
                                     className="w-full inline-flex h-9 items-center justify-center gap-1.5 rounded-xl bg-secondary/15 border border-secondary/20 hover:bg-secondary/25 text-[10px] font-bold text-secondary transition-smooth cursor-pointer"
                                   >
                                     <span>Remind Partner</span>
@@ -521,28 +545,45 @@ export default function LoyaltyTestsPage() {
                 {/* Method selector options */}
                 <div className="space-y-3">
                   <label className="text-[9px] uppercase tracking-wider text-muted-foreground font-bold block">Reminder Method</label>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {/* WhatsApp option */}
                     <button
+                      type="button"
+                      disabled={!isWhatsAppSelectable}
                       onClick={() => setReminderMethod("WHATSAPP")}
-                      className={`flex flex-col items-center justify-center p-4 rounded-2xl border transition-smooth gap-2 text-center cursor-pointer ${
-                        reminderMethod === "WHATSAPP"
+                      className={`flex flex-col items-center justify-center p-4 rounded-2xl border transition-smooth gap-1 text-center cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
+                        reminderMethod === "WHATSAPP" && isWhatsAppSelectable
                           ? "bg-primary/10 border-primary text-white"
                           : "border-white/5 bg-white/5 text-muted-foreground hover:bg-white/10"
                       }`}
                     >
-                      <span className="text-xs font-bold">WhatsApp Direct</span>
+                      <span className="text-xs font-bold text-white">WhatsApp Direct</span>
                       <span className="text-[9px] text-muted-foreground/60">Generate free link</span>
+                      {!isWhatsAppSelectable && (
+                        <span className="text-[8px] text-destructive/80 font-medium mt-1">
+                          {!isWhatsAppConfigured ? "WhatsApp provider not configured." : "WhatsApp sending disabled."}
+                        </span>
+                      )}
                     </button>
+
+                    {/* SMS option */}
                     <button
+                      type="button"
+                      disabled={!isSmsSelectable}
                       onClick={() => setReminderMethod("SMS")}
-                      className={`flex flex-col items-center justify-center p-4 rounded-2xl border transition-smooth gap-2 text-center cursor-pointer ${
-                        reminderMethod === "SMS"
+                      className={`flex flex-col items-center justify-center p-4 rounded-2xl border transition-smooth gap-1 text-center cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
+                        reminderMethod === "SMS" && isSmsSelectable
                           ? "bg-primary/10 border-primary text-white"
                           : "border-white/5 bg-white/5 text-muted-foreground hover:bg-white/10"
                       }`}
                     >
-                      <span className="text-xs font-bold">Direct Carrier SMS</span>
+                      <span className="text-xs font-bold text-white">Direct Carrier SMS</span>
                       <span className="text-[9px] text-accent font-medium">Costs ₦15 (Wallet)</span>
+                      {!isSmsSelectable && (
+                        <span className="text-[8px] text-destructive/80 font-medium mt-1">
+                          {!isSmsConfigured ? "SMS provider not configured." : "SMS sending disabled."}
+                        </span>
+                      )}
                     </button>
                   </div>
                 </div>

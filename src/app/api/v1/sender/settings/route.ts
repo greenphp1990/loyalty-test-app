@@ -13,7 +13,7 @@ export async function GET() {
     const flags = await prisma.featureFlag.findMany({
       where: {
         featureName: {
-          in: ["airtime_gifts", "data_gifts", "cash_gifts", "custom_questions"]
+          in: ["airtime_gifts", "data_gifts", "cash_gifts", "custom_questions", "whatsapp_sending", "sms_sending"]
         }
       }
     });
@@ -45,11 +45,19 @@ export async function GET() {
         dataGifts: featureFlagsMap["data_gifts"] ?? true,
         cashGifts: featureFlagsMap["cash_gifts"] ?? false,
         customQuestions: featureFlagsMap["custom_questions"] ?? true,
+        whatsappSending: featureFlagsMap["whatsapp_sending"] ?? true,
+        smsSending: featureFlagsMap["sms_sending"] ?? false,
       },
       settings: {
         minimumGiftAmount: Number(settingsMap["minimum_gift_amount"] || 100),
         maximumGiftAmount: Number(settingsMap["maximum_gift_amount"] || 50000),
         basicTestFee: Number(settingsMap["basic_test_fee"] || 500),
+      },
+      messagingConfig: {
+        whatsappProvider: process.env.WHATSAPP_PROVIDER || "mock",
+        whatsappConfigured: !!process.env.WASENDER_API_KEY || (process.env.WHATSAPP_PROVIDER === "mock"),
+        smsProvider: process.env.SMS_PROVIDER || "mock",
+        smsConfigured: !!process.env.BULKSMS_NIGERIA_API_TOKEN || (process.env.SMS_PROVIDER === "mock")
       }
     }, { status: 200 });
 
