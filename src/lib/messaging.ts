@@ -125,14 +125,25 @@ export function generateWhatsAppUrl(phone: string, message: string): string {
 
 export async function sendWhatsApp(
   to: string,
-  testLink: string
+  testLink: string,
+  customMessage?: string
 ): Promise<SendWhatsAppResult> {
   const provider = (process.env.WHATSAPP_PROVIDER || "mock").toLowerCase();
 
   console.log(`[WHATSAPP SENDING] Provider: ${provider}, To: ${to}, Link: ${testLink}`);
 
   if (provider === "wasenderapi") {
-    const text = `You have a secured relationship gift waiting. Open your private link to respond safely: ${testLink}. Do not enter passwords, OTPs, bank details, card details, BVN, NIN, or private account information.`;
+    const text = customMessage || `🎁 You have a secured relationship gift waiting.
+
+Open your private link below to respond safely:
+
+${testLink}
+
+🔒 Safety Notice:
+Do not enter passwords, OTPs, bank details, card details, BVN, NIN, or private account information.
+
+⏳ This private link may expire soon.`;
+
     const res = await sendWasenderApiTextMessage({ to, text });
     return {
       success: res.success,

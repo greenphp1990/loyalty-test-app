@@ -80,9 +80,24 @@ export async function POST(
       return NextResponse.json({ error: "SMS feature disabled" }, { status: 400 });
     }
 
-    const origin = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
-    const testLink = `${origin}/t/${test.testToken}`;
-    const message = `You have a secured relationship gift waiting. Open your private link to respond safely: ${testLink}. Do not enter passwords, OTPs, bank details, card details, BVN, NIN, or private account information.`;
+    const appUrl =
+      process.env.NEXT_PUBLIC_APP_URL ||
+      (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000");
+
+    const testLink = new URL(`/t/${test.testToken}`, appUrl).toString();
+
+    const smsMessage = `You have a secured relationship gift waiting. Open your private link: ${testLink}. Do not enter passwords, OTPs, bank details, BVN or NIN.`;
+
+    const whatsappMessage = `🎁 You have a secured relationship gift waiting.
+
+Open your private link below to respond safely:
+
+${testLink}
+
+🔒 Safety Notice:
+Do not enter passwords, OTPs, bank details, card details, BVN, NIN, or private account information.
+
+⏳ This private link may expire soon.`;
 
     if (channel === "SMS") {
       // 8. Check the sms_sending feature flag
@@ -109,7 +124,7 @@ export async function POST(
       }
 
       // 11. Send SMS through BulkSMSNigeria (which calls Bulksmsnigeria client under the hood)
-      const smsResult = await sendSMS(test.receiverPhone, message);
+      const smsResult = await sendSMS(test.receiverPhone, smsMessage);
       if (!smsResult.success) {
         return NextResponse.json({ 
           error: `BulkSMSNigeria API failure: ${smsResult.error || "Unknown carrier timeout."}` 
@@ -160,7 +175,7 @@ export async function POST(
 
     } else {
       // Handle WhatsApp reminder (Generates link, no wallet deduction)
-      const waUrl = generateWhatsAppUrl(test.receiverPhone, message);
+      const waUrl = generateWhatsAppUrl(test.receiverPhone, whatsappMessage);
 
       await prisma.loyaltyTest.update({
         where: { id: test.id },

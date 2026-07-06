@@ -90,10 +90,26 @@ export async function POST(
       }
     }
 
-    // 10. Generate the public receiver URL
-    const origin = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
-    const testLink = `${origin}/t/${test.testToken}`;
-    const textMessage = `You have a secured relationship gift waiting. Open your private link to respond safely: ${testLink}. Do not enter passwords, OTPs, bank details, card details, BVN, NIN, or private account information.`;
+    // 10. Generate the public receiver URL using safe app URL resolver
+    const appUrl =
+      process.env.NEXT_PUBLIC_APP_URL ||
+      (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000");
+
+    const testLink = new URL(`/t/${test.testToken}`, appUrl).toString();
+
+    // Composed templates
+    const whatsappMessage = `🎁 You have a secured relationship gift waiting.
+
+Open your private link below to respond safely:
+
+${testLink}
+
+🔒 Safety Notice:
+Do not enter passwords, OTPs, bank details, card details, BVN, NIN, or private account information.
+
+⏳ This private link may expire soon.`;
+
+    const smsMessage = `You have a secured relationship gift waiting. Open your private link: ${testLink}. Do not enter passwords, OTPs, bank details, BVN or NIN.`;
 
     // ----------------------------------------------------
     // WHATSAPP CHANNEL DISPATCH FLOW
@@ -153,7 +169,7 @@ export async function POST(
       }
 
       // Send WhatsApp message
-      const whatsappResult = await sendWhatsApp(test.receiverPhone, testLink);
+      const whatsappResult = await sendWhatsApp(test.receiverPhone, testLink, whatsappMessage);
 
       // Write log to database
       try {
@@ -171,7 +187,7 @@ export async function POST(
             errorMessage: whatsappResult.error || null,
             requestPayload: {
               to: normalizeWhatsAppPhoneE164(test.receiverPhone),
-              text: textMessage
+              text: whatsappMessage
             },
             responsePayload: whatsappResult.debug?.providerResponse || whatsappResult.debug?.brevoResponse || (whatsappResult.success ? { success: true } : { success: false, error: whatsappResult.error })
           }
@@ -228,7 +244,7 @@ export async function POST(
     }
 
     // Send SMS via BulkSMSNigeria
-    const smsResult = await sendSMS(test.receiverPhone, textMessage);
+    const smsResult = await sendSMS(test.receiverPhone, smsMessage);
 
     // Save MessageLog record for the attempt
     try {
@@ -246,7 +262,7 @@ export async function POST(
           errorMessage: smsResult.error || null,
           requestPayload: {
             to: test.receiverPhone,
-            text: textMessage
+            text: smsMessage
           },
           responsePayload: smsResult.success ? { success: true, messageId: smsResult.messageId } : { success: false, error: smsResult.error }
         }
